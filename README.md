@@ -11,6 +11,6 @@ yarn dev
 
 ###Customizations
 
-Custom Templates to deploy applications across 3 CSPs
-Custom UI and plugins to deploy applications with terraform
-Backend Jobs to get data from CSPs
+Custom Templates to deploy applications across 3 CSPs 
+Custom UI and plugins to deploy applications with terraform 
+Backend Jobs to get data from CSPs 
