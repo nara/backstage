@@ -1,0 +1,1 @@
+export { DependantEntityPickerExtension } from './extension';

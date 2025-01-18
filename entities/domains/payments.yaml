@@ -1,0 +1,7 @@
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: Payments
+  description: Payment Processing
+spec:
+  owner: owner-email@org.com

@@ -1,0 +1,7 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: Payment-Processor
+  description: System to handle payments
+spec:
+  owner: domain:Paynments

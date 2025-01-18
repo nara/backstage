@@ -1,0 +1,413 @@
+# implement one tier by selecting vnet/subnet and delegation
+# implement two tier by selecting vnet/subnet and delegation and frontend/api.
+# implement three tier by using genAI openAI service.
+
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: azure-shared-aks-cluster
+  title: Azure Kuberntes Service Cluster
+  description: Provision an Azure Kubernetes Service Cluster
+  tags:
+    - shared
+    - kubernetes
+    - azure
+spec:
+  owner: user:guest
+  type: service
+
+  parameters:
+    - title: Application Metadata
+      definitions:
+        secondaryRegion:
+          title: Secondary Region
+          type: string
+          description: Select secondary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+      # required:
+      #   - domain
+      #   - system
+      #   - teamCode
+      #   - appKey
+      properties:
+        domain:
+          title: Domain
+          type: string
+          description: Select a domain
+          ui:autofocus: true
+          ui:field: EntityPicker
+          ui:options:
+            allowedKinds:
+              - Domain
+        system:
+          title: System
+          type: string
+          description: Select a System
+          ui:autofocus: true
+          ui:field: DependantEntityPicker
+          ui:options:
+            dependendsOnField: domain
+            allowedKind: System
+        teamCode:
+          title: Team Code
+          type: string
+          description: 3 letter code that represents your team
+          minLength: 3
+          maxLength: 3
+        appKey:
+          title: App Code
+          type: string
+          description: 3 letter code that represents the application
+          minLength: 3
+          maxLength: 3
+        appName:
+          title: App Name
+          type: string
+          description: Enter name of this application (e.g. no spaces allowed. my-application-name)
+          maxLength: 25
+          pattern: ^[a-zA-Z0-9]+([-_.][a-zA-Z0-9]+){0,24}$
+        primaryRegion:
+          title: Primary Region
+          type: string
+          description: Select primary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+        resiliency:
+          title: Resiliency
+          type: string
+          description: What level of resiliency this application needs for both Compute and Data?
+          enum:
+          - none
+          - pilotlight
+          - activepassive
+          - activeactive
+          enumNames:
+          - None
+          - Pilot-Light
+          - Active-Passive
+          - Active-Active
+        mgName:
+          title: Management Group
+          type: string
+          description: Select a management group for this tier
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: orgunits
+        subscription:
+          title: Subscription
+          type: string
+          description: Subscription where this tier will be created
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: accounts
+            dependendsOnField: mgName
+    - title: Kubernetes Cluster Details
+      # required:
+      #   - prefix
+      #   - agent_size
+      #   - repoName
+      properties:
+        kube_version:
+          title: Kubernetes Version
+          type: string
+          description: Select a Kubernetes version
+          enum:
+          - 1.18.14
+          - 1.19.6
+          - 1.20.4
+        prefix:
+          title: Name Prefix
+          type: string
+          description: Enter a name prefix for this cluster (3 to 5 characters)
+          minLength: 3
+          maxLength: 5
+        agent_size:
+          title: Size of Agent Nodes
+          type: string
+          description: Enter size of agent nodes (e.g. Standard_B2s)
+        os_disk_size_gb:
+          title: Agent Node OS Disk Size
+          type: number
+          description: Enter size of OS disk (e.g. 30)
+          default: 50
+        vnet_id:
+          title: VNet
+          type: string
+          description: Select a VNet
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: vpcs
+            dependendsOnField: subscription
+        node_pools:
+          title: Node Pools
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                title: Name of Node Pool
+                type: string
+                description: Enter name of node pool (e.g. default)
+                pattern: '^[-\w\._]+$'
+              vm_size:
+                title: VM Size
+                type: string
+                description: Enter size of VM (e.g. Standard_B2s)
+                default: Standard_B2s
+              node_count:
+                title: Node Count
+                type: number
+                description: Enter number of nodes (e.g. 2)
+              subnet_id:
+                title: Subnet
+                type: string
+                description: Select a subnet
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: subnets
+                  dependendsOnField: vnet_id
+    - title: Connectivity Details
+      # required:
+      #   - prefix
+      #   - agent_size
+      #   - repoName
+      properties:
+        use_firewall:
+            title: Use Firewall
+            type: boolean
+            description: Does this cluster need to connect to the internet? Firwall will be used to connect to the internet.
+        allow_ingress:
+            title: Allow Ingress
+            type: boolean
+            description: Does this cluster need to allow ingress traffic from internet?
+      dependencies:
+        use_firewall: 
+          oneOf:
+            - properties:
+                use_firewall:
+                  const: true
+                egress_subscription:
+                  title: Subscription
+                  type: string
+                  description: Subscription where egress VNET is located
+                  ui:field: CspDataPicker
+                  ui:options:
+                    csp: azure
+                    dataType: accounts
+                    dependendsOnField: mgName
+                egress_vnet:
+                  title: VNet
+                  type: string
+                  description: Select a VNet
+                  ui:field: CspDataPicker
+                  ui:options:
+                    csp: azure
+                    dataType: vpcs
+                    dependendsOnField: egress_subscription
+                egress_subnet:
+                  title: Subnet
+                  type: string
+                  description: Select a subnet
+                  ui:field: CspDataPicker
+                  ui:options:
+                    csp: azure
+                    dataType: subnets
+                    dependendsOnField: egress_vnet
+            - properties:
+                use_firewall:
+                  const: false
+        allow_ingress:
+          oneOf:
+            - properties:
+                allow_ingress:
+                  const: true
+                ingress_subscription:
+                  title: Subscription
+                  type: string
+                  description: Subscription where ingress VNET is located
+                  ui:field: CspDataPicker
+                  ui:options:
+                    csp: azure
+                    dataType: accounts
+                    dependendsOnField: mgName
+                ingress_vnet:
+                  title: VNet
+                  type: string
+                  description: Select a VNet
+                  ui:field: CspDataPicker
+                  ui:options:
+                    csp: azure
+                    dataType: vpcs
+                    dependendsOnField: ingress_subscription
+                ingress_subnet:
+                  title: Subnet
+                  type: string
+                  description: Select a subnet
+                  ui:field: CspDataPicker
+                  ui:options:
+                    csp: azure
+                    dataType: subnets
+                    dependendsOnField: ingress_vnet
+            - properties:
+                allow_ingress:
+                  const: false
+        
+        
+    
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  steps:
+    - id: fetch-aks-template
+      name: Fetch AKS Template
+      action: fetch:template
+      input:
+        #url: https://github.com/nara/azure-shared-svc-aks-template.git
+        url: ./azure-shared-svc-aks-template
+        values:
+          app_key: ${{ parameters.appKey }}
+          environment: ${{ parameters.environment }}
+          org_email_domain: smartfigarage.com #TODO read from config
+          line_of_business_key: lob #${{ parameters.domain }} TODO
+          team_key: ${{ parameters.teamCode }}
+          org_key: org  #${{ parameters.environment }} TODO
+          region: ${{ parameters.primaryRegion }}
+          resiliency: ${{ parameters.resiliency }}
+          mg_name: ${{ parameters.mgName }}
+          subscription: ${{ parameters.subscription }}
+          kube_version: ${{ parameters.kube_version }}
+          prefix: ${{ parameters.prefix }}
+          agent_size: ${{ parameters.agent_size }}
+          os_disk_size_gb: ${{ parameters.os_disk_size_gb }}
+          vnet_id: ${{ parameters.vnet_id }}
+          node_pools: ${{ parameters.node_pools }}
+          use_firewall: ${{ parameters.use_firewall }}
+          allow_ingress: ${{ parameters.allow_ingress }}
+          egress_subscription: ${{ parameters.egress_subscription }}
+          egress_vnet: ${{ parameters.egress_vnet }}
+          egress_subnet: ${{ parameters.egress_subnet }}
+          ingress_subscription: ${{ parameters.ingress_subscription }}
+          ingress_vnet: ${{ parameters.ingress_vnet }}
+          ingress_subnet: ${{ parameters.ingress_subnet }}
+    
+          
+
+
+   #generic, gitlab vs github
+   #check if repo exists, if not create it, if yes, check if branch with a name exists, if not create, if yes, update it. the branch gets deployed to dev.
+   #serverless repo
+    - id: publish_serverless
+      name: Publish Serverless Repo
+      action: publish:repo:branch
+      if: ${{ parameters.service == 'serverless' || (parameters.service == 'app_service' }}
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of azure-app-layer-serverless-template for application Key ${{ parameters.appKey }}
+        repoUrl: gitlab.com?owner=robust4&repo=azure-svl-${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }}
+        branchName: provision-refresh-from-devportal
+        commitAction: create
+
+    - id: clean_workspace_serverless
+      name: Clean Workspace
+      action: clean:workspace
+      input:
+        emptyDir: true
+
+    #network repo
+    - id: fetch-app-sub-network-repo
+      name: Fetch App Subscription Network Repo
+      action: fetch:template
+      input:
+        url: https://gitlab.com/robust4/azure-app-network-lob-${{ parameters.appKey }}.git
+        #url: ./azure-app-network-lob-${{ parameters.appKey }}
+
+    - id: update-json-tfvars-network
+      name: Update Network JSON TFVars file for connectivity
+      action: modify:tfvars:json
+      input:
+        tfvarsPath: env/dev-region-1.json
+        queryPath: rules_by_subnet.tier_name
+        queryValue: ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }}
+        updateNodes: 
+          subnet_name: ${{ parameters.subnetInteg }}
+          custom_rules: ${{ parameters.connectionDetails }}
+
+    - id: publish_app_network_repo
+      name: Publish App Subscription Network Repo
+      action: publish:repo:branch
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Updating network rules for ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }} from backstage
+        repoUrl: gitlab.com?owner=robust4&repo=azure-app-network-lob-${{ parameters.appKey }}
+        branchName: provision-refresh-from-devportal
+        title: Updating network rules for ${{ parameters.appKey }}
+        sourcePath: env
+        targetPath: env
+        commitAction: update
+
+    - id: clean_workspace_network
+      name: Clean Workspace
+      action: clean:workspace
+      input:
+        emptyDir: true
+
+    #security repo
+    - id: fetch-app-sub-security-repo
+      name: Fetch App Subscription Security Repo 1
+      action: fetch:template
+      input:
+        url: https://gitlab.com/robust4/azure-app-security-lob-${{ parameters.appKey }}.git
+        #url: ./azure-app-security-lob-${{ parameters.appKey }}
+
+    - id: update-json-tfvars-security
+      name: Update Security JSON TFVars file for connectivity
+      action: modify:tfvars:json
+      input:
+        tfvarsPath: infra/regional/env/dev-region-1.json
+        formDataJsonStr: ${{ parameters.appJson }}
+        updateNodes: 
+          app_layers: formDataPath=
+          custom_rules: ${{ parameters.connectionDetails }}
+
+    - id: publish_app_security_repo_branch
+      name: Publish App Subscription Security Repo Branch
+      action: publish:repo:branch
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Updating security tfvars for ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }} from backstage
+        repoUrl: gitlab.com?owner=robust4&repo=azure-app-security-lob-${{ parameters.appKey }}
+        branchName: provision-refresh-from-devportal
+        title: Updating security tfvars for ${{ parameters.appKey }}
+        sourcePath: infra/regional/env
+        targetPath: infra/regional/env
+        commitAction: update
+
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+        optional: true
+        # appKey: ${{ parameters.appKey }}
+        # appName: ${{ parameters.appName }}
+        # appDescription: ${{ parameters.appDescription }}
+        # gitlabInfraGroupName: robust4
+        # gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+        
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

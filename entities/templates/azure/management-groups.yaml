@@ -1,0 +1,164 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: azure-management-groups
+  title: Azure Management Groups
+  description: Provision Azure Management Groups using terraform and pipelines
+  tags:
+    - recommended
+    - central
+    - azure
+spec:
+  owner: user:guest
+  type: service
+
+  parameters:
+    - title: Define Hierarchy 
+      description: Define the hierarchy of management groups. By default, the hierarchy is 4 levels deep. The default hierarchy is defined as follows Level 1 - mg-organization, Level 2 mg-landingzones, mg-platform, mg-sandbox, mg-decommissioned. Level 3 - mg-prod, mg-nonprod under mg-landingzones, Level 4 - mg-sales-prod, mg-marketing-prod under mg-prod.
+      definitions:
+        mgName:
+          type: string
+          description: Enter a name for the management group
+          pattern: '^mg-[\w|-]+$'
+      required:
+        - level1
+        - level2
+      properties:
+        level1:
+          title: Level 1 - Root Org Name
+          type: string
+          description: Enter a name for root orgaization in format mg-{name}-{parent} e.g. mg-sales-prod. The name must be unique across all management groups within the directory. 
+          $ref: "#/definitions/mgName"
+          default: mg-organization
+        level2:
+          title: Level 2 - Management Groups under Root Org
+          description: Enter a name for the management group
+          type: array
+          minItems: 1
+          items:
+            type: string
+            $ref: "#/definitions/mgName"
+          default:
+            - mg-landingzones
+            - mg-platform
+            - mg-sandbox
+            - mg-decommissioned
+        level3:
+          title: Level 3 - Management Groups under Level 2
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                $ref: "#/definitions/mgName"
+              level2Index:
+                type: integer
+                description: Index of the level 2 management group under which this management group will be created. Index starts from 1.
+                enum:
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                default: 1
+          default:
+            - name: mg-prod
+              level2Index: 1
+            - name: mg-nonprod
+              level2Index: 1
+            - name: mg-platform-prod
+              level2Index: 2
+            - name: mg-platform-nonprod
+              level2Index: 2
+        level4:
+          title: Level 4 - Management Groups under Level 3
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                $ref: "#/definitions/mgName"
+              level3Index:
+                type: integer
+                description: Index of the level 3 management group under which this management group will be created. Index starts from 1.
+                enum:
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                default: 1
+          default:
+            - name: mg-sales-prod
+              level3Index: 1
+            - name: mg-marketing-prod
+              level3Index: 1
+            - name: mg-sales-nonprod
+              level3Index: 2
+            - name: mg-marketing-nonprod
+              level3Index: 2
+
+          
+          
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  steps:
+
+    - id: build-mg-json
+      name: Builds Management Groups Json as needed by TFVars file
+      action: custom:azure:buildManagementGroupJson
+      input:
+        level1OrgName: ${{ parameters.level1 }}
+        level2Groups: ${{ parameters.level2 }}
+        level3Groups: ${{ parameters.level3 }}
+        level4Groups: ${{ parameters.level4 }}
+          
+
+    # Each step executes an action, in this case one templates files into the working directory.
+    - id: fetch-mg-repo
+      name: Fetch Management Groups Template
+      action: fetch:template
+      input:
+        url: ./azure-management-groups-template #https://github.com/nara/gcp-cloud-run-iam-template
+        values:
+          managementGroupVar: ${{ steps['build-mg-json'].output.managementGroupMapVar }}
+          
+    # This step publishes the contents of the working directory to GitHub.
+    - id: publish_mg_repo
+      name: Publish Management Groups Repo
+      action: publish:gitlab
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of azure-management-group-template
+        repoUrl: gitlab.com?owner=platform9851920&repo=azure-management-groups
+
+    - id: clean_workspace
+      name: Clean Workspace
+      action: clean:workspace
+      input:
+        emptyDir: true
+    
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

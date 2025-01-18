@@ -1,0 +1,7 @@
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: Fulfillment
+  description: Order processing and fulfillment
+spec:
+  owner: owner-email@org.com

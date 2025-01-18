@@ -1,0 +1,103 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: backstage-admin
+  description: Backstage Admins
+spec:
+  type: group
+  profile:
+    displayName: Backstage Admins
+    email: backstageadmins@example.com
+    picture: https://example.com/groups/bu-infrastructure.jpeg
+  children: []
+  members: [jennydoe]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: employees
+  description: All employees
+spec:
+  type: business-unit
+  profile:
+    displayName: All Employees
+    email: employees@example.com
+    picture: https://example.com/groups/bu-infrastructure.jpeg
+  children: []
+  members: [johndoe, jennydoe]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: ops
+  description: Operations Group
+spec:
+  type: business-unit
+  profile:
+    displayName: Operations
+    email: ops@example.com
+    picture: https://example.com/groups/bu-infrastructure.jpeg
+  children: []
+  members: [johndoe]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: infrastructure
+  description: The infra business unit
+spec:
+  type: business-unit
+  profile:
+    displayName: Infrastructure
+    email: infrastructure@example.com
+    picture: https://example.com/groups/bu-infrastructure.jpeg
+  parent: ops
+  children: [backstage-admin]
+  members: [jennydoe]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: HR
+  description: The infra business unit
+spec:
+  type: business-unit
+  profile:
+    displayName: Human Resources
+    email: hr@example.com
+    picture: https://example.com/groups/bu-infrastructure.jpeg
+  parent: ops
+  children: [employees]
+  members: [johndoe]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: team-a
+  description: Team A
+spec:
+  type: business-unit
+  profile:
+    displayName: Team A
+    email: team-a@example.com
+    picture: https://example.com/groups/bu-infrastructure.jpeg
+  children: []
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: team-b
+  description: Team B
+spec:
+  type: business-unit
+  profile:
+    displayName: Team B
+    email: team-b@example.com
+    picture: https://example.com/groups/bu-infrastructure.jpeg
+  children: []

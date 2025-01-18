@@ -1,0 +1,338 @@
+# get vnets and display them d
+# action to update tfvars file in gitlab
+# modify subnet - to add delegation etc. d
+# modify vnet - to add delegation etc. d
+# add env for subscription select
+# pull tags on all resources vnet, subnet, match based on name and tags - and filter too. TODO
+
+
+
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: azure-vnet-subnets
+  title: Azure VNet and Subnets
+  description: Provision New Azure Virtual Network and Subnets using terraform and pipelines
+  tags:
+    - recommended
+    - network
+    - azure
+spec:
+  owner: user:guest
+  type: service
+
+  parameters:
+    - title: VNet and Subnet Modifications
+      description: Select subscription where you want to make changes for Virtual Network/Subnets
+      required:
+        - mgName
+        - subscription
+      definitions:
+        serviceEndpoints:
+          title: Service Endpoints
+          type: array
+          description: Select service endpoints for this subnet (e.g, Microsoft.Web, Accepted values https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet#service_endpoints)
+          items:
+            type: string
+            enum:
+            - Microsoft.AzureActiveDirectory
+            - Microsoft.AzureCosmosDB
+            - Microsoft.ContainerRegistry
+            - Microsoft.EventHub
+            - Microsoft.KeyVault
+            - Microsoft.ServiceBus
+            - Microsoft.Sql
+            - Microsoft.Storage
+            - Microsoft.Storage.Global
+            - Microsoft.Web
+        subnetDelegations:
+          title: Subnet Delegations
+          type: array
+          description: Enter details of the subnet delegations
+          items:
+            type: object
+            properties:
+              serviceName:
+                title: Service Name
+                type: string
+                description: Enter the name of the service (e.g Microsoft.DBforPostgreSQL/flexibleServers. Accepted values https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet#name)
+              serviceActions:
+                title: Service Actions
+                type: array
+                description: Enter the actions that the service can perform (e.g, Microsoft.Network/publicIPAddresses/read, Accepted values https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet#actions)
+                items:
+                  type: string
+        subnets:
+          title: Subnets
+          type: array
+          description: Enter details of the subnets to be created in the Virtual Network
+          items:
+            type: object
+            properties:
+              subnetType:
+                title: Subnet Type
+                type: string
+                description: Select the type of subnet to be created
+                enum:
+                - enterprise
+                - private
+                - dmz
+                enumNames:
+                - Enterprise (Has access to enterprise services)
+                - Private (No access to enterprise services)
+                - DMZ (To host load balancers for ingress traffic from internet)
+              subnetName:
+                title: Subnet Name
+                type: string
+                description: Enter a letter word to postfix to the subnet name
+                maxLength: 3
+                minLength: 3
+              isAutomatic:
+                title: Automatic IP Range
+                type: boolean
+                description: Select if you want to automatically assign IP range to the subnet
+                default: true
+            dependencies:
+              isAutomatic:
+                oneOf:
+                - properties:
+                    isAutomatic:
+                      const: true
+                    cidrRange:
+                      title: CIDR Range
+                      type: number
+                      description: Enter the CIDR range for the subnet
+                      default: 25
+                    serviceEndpoints:
+                      $ref: "#/definitions/serviceEndpoints"
+                    subnetDelegations:
+                      $ref: "#/definitions/subnetDelegations"
+                  required:
+                    - cidrRange
+                - properties:
+                    isAutomatic:
+                      const: false
+                    ipRange:
+                      title: IP Range
+                      type: string
+                      description: Enter the IP range for the subnet
+                    serviceEndpoints:
+                      $ref: "#/definitions/serviceEndpoints"
+                    subnetDelegations:
+                      $ref: "#/definitions/subnetDelegations"
+                  required:
+                    - ipRange
+              
+
+      properties:
+        appKey:
+          title: App Code
+          type: string
+          description: 3 letter code that represents the application
+          minLength: 3
+          maxLength: 3
+        mgName:
+          title: Management Group
+          type: string
+          description: Select a management group where the new Virtual Network will be created in.
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: orgunits
+        subscription:
+          title: Subscription
+          type: string
+          description: Subscription where this Virtual Network will be created
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: accounts
+            dependendsOnField: mgName
+        action:
+          title: Action
+          type: string
+          enum:
+          - createVnet
+          - addIpToVNet
+          - createSubnet
+          - deleteSubnet
+          - addServiceEndpoint
+          - delegateSubnet
+          enumNames:
+          - Create Virtual Network
+          - Add IP to VNet
+          - Add Subnets
+          - Delete Subnet
+          - Add Service Endpoint
+          - Delegate Subnet
+
+      dependencies:
+        action:
+          oneOf:
+          - properties:
+              action:
+                const: createVnet
+              vnetName:
+                title: Name
+                type: string
+                description: Enter a name for the Virtual Network
+                maxLength: 3
+                minLength: 3
+              region:
+                title: Region
+                description: Select the region where the Virtual Network will be created
+                type: string
+                enum:
+                - eastus
+                - eastus2
+                - southcentralus
+                - westus
+              ipRange:
+                title: IP Range
+                description: Enter the IP range for the Virtual Network
+                type: string
+              subnets:
+                $ref: "#/definitions/subnets"
+          - properties:
+              action:
+                const: addIpToVNet
+              addIpToExistingVnet:
+                title: Virtual Network
+                type: string
+                description: Select an existing Virtual Network
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: vpcs
+                  dependendsOnField: subscription
+              ipRange:
+                title: IP Range
+                description: Enter the IP range for the Virtual Network
+                type: string
+          - properties:
+              action:
+                const: createSubnet
+              createSubnetInVnet:
+                title: Virtual Network
+                type: string
+                description: Select an existing Virtual Network
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: vpcs
+                  dependendsOnField: subscription
+              subnets:
+                $ref: "#/definitions/subnets"
+          - properties:
+              action:
+                const: deleteSubnet
+              deleteSubnetInVnet:
+                title: Virtual Network
+                type: string
+                description: Select an existing Virtual Network
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: vpcs
+                  dependendsOnField: subscription
+              subnetToDelete:
+                title: Subnet to Delete
+                type: string
+                description: Select the subnet to be deleted
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: subnets
+                  dependendsOnField: deleteSubnetInVnet
+          - properties:
+              action:
+                const: addServiceEndpoint
+              addServiceEndpointVnet:
+                title: Virtual Network
+                type: string
+                description: Select an existing Virtual Network
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: vpcs
+                  dependendsOnField: subscription
+              addServiceEndpointSubnet:
+                title: Subnet
+                type: string
+                description: Select an existing Subnet to add service endpoint to.
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: subnets
+                  dependendsOnField: addServiceEndpointVnet
+              serviceEndpoints:
+                    $ref: "#/definitions/serviceEndpoints"
+          - properties:
+              action:
+                const: delegateSubnet
+              delegateSubnetVnet:
+                title: Virtual Network
+                type: string
+                description: Select an existing Virtual Network
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: vpcs
+                  dependendsOnField: subscription
+              delegateSubnetSubnet:
+                title: Subnet
+                type: string
+                description: Select an existing Subnet to delegate.
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: subnets
+                  dependendsOnField: delegateSubnetVnet
+              subnetDelegations:
+                  $ref: "#/definitions/subnetDelegations"
+          
+  steps:
+
+    - id: fetch-app-sub-repo
+      name: Fetch App Subscriptions Repo
+      action: fetch:template
+      input:
+        #url: ./azure-sub-network-${{ parameters.line_of_business_key }}-${{ parameters.appKey }} #https://github.com/nara/gcp-cloud-run-iam-template
+        url: ./azure-sub-network-lob-${{ parameters.appKey }} #https://github.com/nara/gcp-cloud-run-iam-template
+
+    - id: update-json-tfvars
+      name: Update JSON TFVars file
+      action: modify:tfvars:appnetwork
+      input:
+        tfvarsPath: env/dev-region-1.json
+        mgName: ${{ parameters.mgName }}
+        subscription: ${{ parameters.subscription }}
+        action: ${{ parameters.action }}
+        vnetName:  ${{ parameters.vnetName 
+          if parameters.action == 'createVnet' 
+          else (parameters.addIpToExistingVnet if parameters.action == 'addIpToVNet' 
+          else (parameters.createSubnetInVnet if parameters.action == 'createSubnet' 
+          else (parameters.addServiceEndpointVnet if parameters.action == 'addServiceEndpoint' 
+          else (parameters.delegateSubnetVnet if parameters.action == 'delegateSubnet' 
+          else '')))) }}
+        region: ${{ parameters.region }}
+        ipRange: ${{ parameters.ipRange }}
+        subnets: ${{ parameters.subnets }}
+        subnetToActOn: ${{ parameters.addServiceEndpointSubnet 
+          if parameters.action == 'addServiceEndpoint' 
+          else (parameters.delegateSubnetSubnet if parameters.action == 'delegateSubnet' 
+          else (parameters.subnetToDelete if parameters.action == 'deleteSubnet' 
+          else '')) }}
+        serviceEndpoints: ${{ parameters.serviceEndpoints }}
+        subnetDelegations: ${{ parameters.subnetDelegations }}
+
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

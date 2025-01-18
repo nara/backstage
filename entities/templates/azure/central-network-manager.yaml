@@ -1,0 +1,150 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: azure-virtual-network-manager
+  title: Azure Virtual Network Manager
+  description: Provision New Azure Virtual Network Manager using terraform and pipelines
+  tags:
+    - recommended
+    - central
+    - azure
+    - network
+spec:
+  owner: user:guest
+  type: service
+
+  parameters:
+    - title: Virtual Network Manager Location
+      description: Select management group and subscription where this Virtual Network Manager will be created
+      required:
+        - lob
+        - mgName
+        - subscription
+        - nvmType
+      properties:
+        lob:
+          title: Line of Business
+          type: string
+          description: Select the Line of Business that this Virtual Network Manager will be created for
+          maxLength: 3
+        name:
+          title: Name
+          type: string
+          description: Enter a name for the Virtual Network Manager
+        mgName:
+          title: Management Group
+          type: string
+          description: Select a management group where the new Virtual Network Manager will be created in.
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: orgunits
+        subscription:
+          title: Subscription
+          type: string
+          description: Subscription where this Virtual Network Manager will be created
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: accounts
+            dependendsOnField: mgName
+        nvmType:
+          title: Network Manager Type
+          description: Select the type of Network Manager to be created
+          type: string
+          enum:
+          - Hub
+          - Mesh
+      dependencies:
+        nvmType:
+          oneOf:
+          - properties:
+              nvmType:
+                const: Hub
+              hubVNet:
+                title: Hub Virtual Network
+                type: string
+                description: Select the VNet that will be used as the hub for this Network Manager
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: vpcs
+                  dependendsOnField: subscription
+            required:
+              - hubVNet
+          - properties:
+              nvmType:
+                const: Mesh
+
+    - title: VNet Manager Details
+      description: Enter details of the virtual networks to be used by this Network Manager
+      required:
+        - mgAssociation
+        - tagName
+        - tagValues
+      properties:
+        mgAssociation:
+          title: Management Group Association
+          type: string
+          description: The VNets in all subscriptions under this management group will be associated with this Network Manager based on the tag values provided below
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: orgunits
+        tagName:
+          title: Tag Name
+          description: Enter the name of the tag to be used to identify virtual networks associated with this Network Manager
+          type: string
+          default: ENV
+        tagValues:
+          title: Enter the values for the tag
+          type: array
+          items:
+            type: string
+            default:
+              - dev
+              - test
+          
+  steps:
+
+    # Each step executes an action, in this case one templates files into the working directory.
+    - id: fetch-vnetman-repo
+      name: Fetch VNet Manager Repo
+      action: fetch:template
+      input:
+        url: ./azure-centralnw-template #https://github.com/nara/gcp-cloud-run-iam-template
+        values:
+          orgKey: org #TODO read from config
+          lineOfBusiness: ${{ parameters.lob }}
+          mgAssociation: ${{ parameters.mgAssociation }}
+          tagName: ${{ parameters.tagName }}
+          tagValues: ${{ parameters.tagValues }}
+          hubVnetId: ${{ parameters.hubVNet }}
+          nvmType: ${{ parameters.nvmType }}
+          name: ${{ parameters.name }}
+          
+    # This step publishes the contents of the working directory to GitHub.
+    - id: publish_mg_repo
+      name: Publish Management Groups Repo
+      action: publish:gitlab
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of azure-management-group-template
+        repoUrl: gitlab.com?owner=platform9851920&repo=azure-vnetman-${{ parameters.name }}
+
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

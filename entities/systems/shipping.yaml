@@ -1,0 +1,7 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: Shipping-System
+  description: System to handle shipments
+spec:
+  owner: domain:Fulfillment

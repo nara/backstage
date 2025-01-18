@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: all-systems
+spec:
+  type: file
+  targets:
+    - ./payment-processor.yaml
+    - ./shipping.yaml
+    - ./returns.yaml

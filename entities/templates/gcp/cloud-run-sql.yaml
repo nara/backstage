@@ -1,0 +1,409 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: cloud-run-cloud-sql
+  title: Cloud Run with Cloud SQL
+  description: Provision Cloud Run application and Cloud SQL, connectivity, security, DNS, certificates.
+  tags:
+    - recommended
+    - workloads
+    - google
+spec:
+  owner: user:guest
+  type: service
+
+  # These parameters are used to generate the input form in the frontend, and are
+  # used to gather input data for the execution of the template.
+  parameters:
+    - title: Application Metadata 1
+      definitions:
+        secondaryRegion:
+          title: Secondary Region
+          type: string
+          description: Select secondary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+      # required:
+      #   - domain
+      #   - system
+      #   - teamCode
+      #   - environment
+      #   - appKey
+      #   - projectId
+      properties:
+        domain:
+          title: Domain
+          type: string
+          description: Select a domain
+          ui:autofocus: true
+          ui:field: EntityPicker
+          ui:options:
+            allowedKinds:
+              - Domain
+        system:
+          title: System
+          type: string
+          description: Select a System
+          ui:autofocus: true
+          ui:field: DependantEntityPicker
+          ui:options:
+            dependendsOnField: domain
+            allowedKind: System
+        teamCode:
+          title: Team Code
+          type: string
+          description: 3 letter code that represents your team
+          minLength: 3
+          maxLength: 3
+        environment:
+          title: Environment
+          type: string
+          description: Select the environment you are provisioning
+          enum:
+          - dev
+        appKey:
+          title: App Code
+          type: string
+          description: 3 letter code that represents the application
+          minLength: 3
+          maxLength: 3
+        appName:
+          title: App Name
+          type: string
+          description: Enter name of this application (e.g. no spaces allowed. my-application-name)
+          maxLength: 25
+          pattern: ^[a-zA-Z0-9]+([-_.][a-zA-Z0-9]+){0,24}$
+        appDescription:
+          title: App Description
+          type: string
+          description: Enter a description of this application
+          maxLength: 100
+        primaryRegion:
+          title: Primary Region
+          type: string
+          description: Select primary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+        resiliency:
+          title: Resiliency
+          type: string
+          description: What level of resiliency this application needs for both Compute and Data?
+          enum:
+          - none
+          - pilotlight
+          - activepassive
+          - activeactive
+          enumNames:
+          - None
+          - Pilot-Light
+          - Active-Passive
+          - Active-Active
+        projectId:
+          title: Select a project
+          type: string
+          description: Select a project/enter
+        vpcName:
+          title: VPC
+          type: string
+          description: Select a VPC where cloud sql needs to be created, and private connection for Cloud Run will be established
+        subnetIpRange:
+          title: Subnet IP range
+          type: string
+          description: Enter a subnet IP range for new subnet to be created cloud run private connecitivty to cloud sql. format 999-999-999-999/24
+        securityLevel:
+          title: Security Level
+          type: string
+          description: Select a security level for this application
+          enum:
+          - private
+          - internal
+          - public
+        
+      dependencies:
+        resiliency:
+          oneOf:
+          - properties:
+              resiliency:
+                const: none
+          - properties:
+              resiliency:
+                const: pilotlight
+              secondaryRegion:
+                $ref: "#/definitions/secondaryRegion"
+          - properties:
+              resiliency:
+                const: activepassive
+              secondaryRegion:
+                $ref: "#/definitions/secondaryRegion"
+          - properties:
+              resiliency:
+                const: activeactive
+              secondaryRegion:
+                $ref: "#/definitions/secondaryRegion"
+        
+    # - title: Choose a location
+    #   # required:
+    #   #   - repoUrl
+    #   properties:
+    #     repoUrl:
+    #       title: Repository Location
+    #       type: string
+    #       ui:field: RepoUrlPicker
+    #       ui:options:
+    #         allowedHosts:
+    #           - gitlab.com
+
+    - title: Cloud Run
+      # required:
+      #   - minInstances
+      #   - maxInstances
+      #   - useLoadBalancer
+      #   - dnsPrefix
+      properties:
+        serviceName:
+          title: Enter a name for cloud run service
+          type: string
+          description: Enter a name for cloud run service
+        minInstances:
+          title: Min number of instances
+          type: number
+          description: Enter min number of instances for cloud run
+          default: 1
+        maxInstances:
+          title: Max number of instances
+          type: number
+          description: Enter max number of instances for cloud run
+          default: 1
+        useLoadBalancer:
+          title: Has Load Balancer?
+          type: string
+          description: Does this app have a load balancer?
+          enum:
+          - Yes
+          - No
+        dnsPrefix:
+          title: DNS Prefix
+          type: string
+          description: 3 letter code to append as prefix to DNS name as {prefix}.{env}.{org_domain}.com
+      dependencies:
+        useLoadBalancer:
+          oneOf:
+          - properties:
+              useLoadBalancer:
+                const: Yes
+              protocol:
+                title: Listener Protocol
+                type: string
+                descripiton: Select a protocol for load balancer listener.
+                enum:
+                - HTTPS
+                - TLS
+                - HTTP
+                - TCP
+                default: HTTPS
+              port:
+                title: Listener Port
+                type: number
+                descripiton: Enter a port for load balancer listener.
+                default: 443
+          - properties:
+              useLoadBalancer:
+                const: No
+
+    - title: Cloud SQL
+      properties:
+        dbType:
+          title: Database Engine
+          type: string
+          description: Select a database engine
+          enum:
+          - postgres
+          - mysql
+          - mssql
+          enumNames:
+          - PostgreSQL
+          - MySQL
+          - MS-SQL
+        dbEngineVersion:
+          title: Database Version
+          type: string
+          description: Select a database version
+          enum:
+          - POSTGRES_14
+          - POSTGRES_13
+          - POSTGRES_12
+        vmSize:
+          title: Size of the VM for master instance
+          type: string
+          enum:
+          - db-f1-micro
+          - db-g1-small
+          - HA db-g1-small
+          enumNames:
+          - Small (db-f1-micro)
+          - Medium (db-g1-small)
+          - Large (HA db-g1-small)
+        diskSize:
+          title: DB Size
+          type: number
+          description: Enter DB  Size in GB
+          default: 10
+        authorizedNetworkIp:
+          title: Authorized Network IP Address
+          description: Enter authorized network IP address that should be allowed to connect this instance. format ex:111.111.111.111/32
+          type: string
+        dbName:
+          title: Database Name
+          description: Enter database name that should be created by default.
+          type: string
+          default: default
+        dbUserName:
+          title: Database User Name
+          description: Enter database user name that should be created by default.
+          type: string
+          default: db_user
+        
+        
+
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  steps:
+    # pre. account, networking. outside of pattern
+    # repo, pipeline, create repos with TF. with steps (roles, kms keys, certs, tf module for resources)
+    # ad groups per account vs app.
+    # roles/service accounts per app (readonly, ops, automation, dev, admin)
+    # encryption kms keys
+    # certificates?
+    
+    # 
+
+    # Each step executes an action, in this case one templates files into the working directory.
+    - id: fetch-iam-repo
+      name: Fetch IAM template
+      action: fetch:template
+      input:
+        url: https://github.com/nara/gcp-cloud-run-iam-template
+        values:
+          appKey: ${{ parameters.appKey }}
+          environment: ${{ parameters.environment }}
+          orgDomain: smartfigarage.com #TODO read from config
+          lineOfBusiness: lob #${{ parameters.domain }} TODO
+          teamKey: ${{ parameters.teamCode }}
+          orgKey: org  #${{ parameters.environment }} TODO
+          kmsProjectId: ${{ parameters.projectId }}
+          vpcProjectId: ${{ parameters.projectId }}
+          serverlessProjectId: ${{ parameters.projectId }}
+          useCloudIdentity: true #TODO add input
+          primaryRegion: ${{ parameters.primaryRegion }}
+          secondaryRegion: ${{ parameters.secondaryRegion }}
+          newSubnetCidr: ${{ parameters.newSubnetCidr }}
+          cloudRunServiceName: ${{ parameters.serviceName }}
+          resiliency: ${{ parameters.resiliency }}
+          securityLevel: ${{ parameters.securityLevel }}
+          useLoadBalancer: ${{ parameters.useLoadBalancer === "Yes" }}
+          usesSSL: ${{ parameters.protocol === "HTTPS" or parameters.protocol === "TLS" }}
+          domainRecord: ${{ parameters.dnsPrefix }}.${{ parameters.environment }}.smartfigarage.com
+          hostedZoneName: ${{ parameters.environment }}-smartfigarage-com
+          minInstances: ${{ parameters.minInstances }}
+          maxInstances: ${{ parameters.maxInstances }}
+          allowUnauthenticated: ${{ parameters.allowUnauthenticated }}
+          dbVersion: ${{ parameters.dbEngineVersion }}
+          vpcName: ${{ parameters.vpcName }}
+          dbUserName: ${{ parameters.dbUserName }}
+          sqlAuthHostIp: ${{ parameters.authorizedNetworkIp }}
+          subnetIpRange: ${{ parameters.subnetIpRange }}
+          tfStateBucketName: nara-tf-state-fi #TODO make it configurable
+          appName: ${{ parameters.appName }}
+          appDescription: ${{ parameters.appDescription }}
+          gitlabInfraGroupName: robust4 #todo make it input
+          gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+
+    # This step publishes the contents of the working directory to GitHub.
+    - id: publish_iam
+      name: Publish IAM Repo
+      action: publish:gitlab
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of gcp-cloud-run-iam-template for application Key ${{ parameters.appKey }} managed by central IAM team
+        repoUrl: gitlab.com?owner=robust4&repo=${{ parameters.appKey }}-gcp-iam-cr-cs
+
+    - id: clean_workspace
+      name: Clean Workspace
+      action: clean:workspace
+      input:
+        emptyDir: true
+        
+    - id: fetch-workload
+      name: Fetch Workload Template
+      action: fetch:template
+      input:
+        url: https://github.com/nara/gcp-workload-cloud-run-sql-template
+        values:
+          appKey: ${{ parameters.appKey }}
+          environment: ${{ parameters.environment }}
+          orgDomain: smartfigarage.com #TODO read from config
+          lineOfBusiness: lob #${{ parameters.domain }} TODO
+          teamKey: ${{ parameters.teamCode }}
+          orgKey: org  #${{ parameters.environment }} TODO
+          kmsProjectId: ${{ parameters.projectId }}
+          vpcProjectId: ${{ parameters.projectId }}
+          serverlessProjectId: ${{ parameters.projectId }}
+          useCloudIdentity: true #TODO add input
+          primaryRegion: ${{ parameters.primaryRegion }}
+          secondaryRegion: ${{ parameters.secondaryRegion }}
+          newSubnetCidr: ${{ parameters.newSubnetCidr }}
+          cloudRunServiceName: ${{ parameters.serviceName }}
+          resiliency: ${{ parameters.resiliency }}
+          securityLevel: ${{ parameters.securityLevel }}
+          useLoadBalancer: ${{ parameters.useLoadBalancer === "Yes" }}
+          usesSSL: ${{ parameters.protocol === "HTTPS" or parameters.protocol === "TLS" }}
+          domainRecord: ${{ parameters.dnsPrefix }}.${{ parameters.environment }}.smartfigarage.com
+          hostedZoneName: ${{ parameters.environment }}-smartfigarage-com
+          minInstances: ${{ parameters.minInstances }}
+          maxInstances: ${{ parameters.maxInstances }}
+          allowUnauthenticated: ${{ parameters.allowUnauthenticated }}
+          dbVersion: ${{ parameters.dbEngineVersion }}
+          vpcName: ${{ parameters.vpcName }}
+          dbUserName: ${{ parameters.dbUserName }}
+          sqlAuthHostIp: ${{ parameters.authorizedNetworkIp }}
+          subnetIpRange: ${{ parameters.subnetIpRange }}
+          tfStateBucketName: nara-tf-state-fi #TODO make it configurable
+          appName: ${{ parameters.appName }}
+          appDescription: ${{ parameters.appDescription }}
+          gitlabInfraGroupName: robust4 #todo make it input
+          gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+          owner: robust #todo add teams/members
+          
+
+    # This step publishes the contents of the working directory to GitHub.
+    - id: publish_workload
+      name: Publish Workload Repo
+      action: publish:gitlab
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of gcp-workload-cloud-run-sql-template for application Key ${{ parameters.appKey }} managed by App Team
+        repoUrl: gitlab.com?owner=robust4&repo=${{ parameters.appKey }}-gcp-workload-cr-cs
+    
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+        appKey: ${{ parameters.appKey }}
+        appName: ${{ parameters.appName }}
+        appDescription: ${{ parameters.appDescription }}
+        gitlabInfraGroupName: robust4 #todo make it input
+        gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

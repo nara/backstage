@@ -1,0 +1,242 @@
+# subscription create
+# repo for vnet/subnets
+
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: azure-app-subscriptions
+  title: Azure Application Subscriptions
+  description: Provision Azure Subscription for Applications using terraform and pipelines
+  tags:
+    - recommended
+    - workloads
+    - azure
+spec:
+  owner: user:guest
+  type: service
+
+  parameters:
+    - title: Organization Information
+      description: Enter organization information used for naming convention
+      required:
+        - domain
+        - system
+        - teamCode
+        - appKey
+      properties:
+        domain:
+          title: Domain
+          type: string
+          description: Select a domain
+          ui:autofocus: true
+          ui:field: EntityPicker
+          ui:options:
+            allowedKinds:
+              - Domain
+        system:
+          title: System
+          type: string
+          description: Select a System
+          ui:autofocus: true
+          ui:field: DependantEntityPicker
+          ui:options:
+            dependendsOnField: domain
+            allowedKind: System
+        teamCode:
+          title: Team Code
+          type: string
+          description: 3 letter code that represents your team
+          minLength: 3
+          maxLength: 3
+        appKey:
+          title: App Code
+          type: string
+          description: 3 letter code that represents the application
+          minLength: 3
+          maxLength: 3
+
+    - title: App Subscriptions Location
+      description: Select management group where these App Subscriptions will be created
+      required:
+        - name
+        - mgGroups
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Enter a name for the App Subscription
+        mgGroups:
+          title: Management Groups
+          type: array
+          minItems: 1
+          description: Select the management group for each environment where the new App Subscription will be created in.
+          items:
+            type: object
+            properties:
+              env:
+                title: Environment
+                type: string
+                description: Select the environment
+                enum:
+                - dev
+                - test
+                - prod
+              mgName:
+                title: Management Group
+                type: string
+                description: Select a management group where the new App Subscription will be created in.
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: orgunits
+                  envFieldName: env
+          
+    - title: Billing Account Information
+      description: Enter billing account information that will be used for creating subscriptions
+      required:
+        - billingAccountType
+      properties:
+        billingAccountType:
+          title: Billing Account Type
+          type: string
+          description: Select the billing account type
+          enumNames:
+          - Enterprise Agreement (EA)
+          - Microsoft Customer Agreement (MCA)
+          - Microsoft Partner Agreement (MPA)
+          enum:
+          - EA
+          - MCA
+          - MPA
+          default: EA
+      dependencies:
+        billingAccountType:
+          oneOf:
+          - properties:
+              billingAccountType:
+                const: EA
+              enrollmentAccountId:
+                title: Enrollment Account ID
+                type: string
+                description: Enter the enrollment account ID
+              billingAccountId:
+                title: Billing Account ID
+                type: string
+                description: Enter the billing account ID
+            required:
+              - enrollmentAccountId
+              - billingAccountId
+          - properties:
+              billingAccountType:
+                const: MCA
+              billingAccountId:
+                title: Billing Account ID
+                type: string
+                description: Enter the billing account ID
+              billingProfileId:
+                title: Billing Profile ID
+                type: string
+                description: Enter the billing profile ID
+              invoiceSectionId:
+                title: Invoice Section ID
+                type: string
+                description: Enter the invoice section ID
+            required:
+              - billingAccountId
+              - billingProfileId
+              - invoiceSectionId
+          - properties:
+              billingAccountType:
+                const: MPA
+              billingAccountId:
+                title: Billing Account ID
+                type: string
+                description: Enter the billing account ID
+              customerId:
+                title: Customer ID
+                type: string
+                description: Enter the customer ID
+            required:
+              - billingAccountId
+              - customerId
+        
+          
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  steps:
+
+    # Each step executes an action, in this case one templates files into the working directory.
+    - id: fetch-app-sub-repo
+      name: Fetch App Subscriptions Repo
+      action: fetch:template
+      input:
+        url: ./azure-sub-network-${{ parameters.line_of_business_key }}-${{ parameters.appKey }}- #https://github.com/nara/gcp-cloud-run-iam-template
+        values:
+          managementGroupVar: ${{ parameters.mgGroups }}
+          org_email_domain: "domain.com" #todo
+          line_of_business_key: "lob" #todo
+          team_key : "${{ parameters.teamCode }}"
+          org_key: "orgkey" #todo
+          app_key: "${{ parameters.appKey }}"
+          billing_account_type: "${{ parameters.billingAccountType }}"
+          billing_account_id: "${{ parameters.billingAccountId }}"
+          billing_profile_id: "${{ parameters.billingProfileId }}"
+          invoice_section_id: "${{ parameters.invoiceSectionId }}"
+          customer_id: "${{ parameters.customerId }}"
+          enrollment_account_id: "${{ parameters.enrollmentAccountId }}"
+          name: "${{ parameters.name }}"
+
+          
+    # This step publishes the contents of the working directory to GitHub.
+    - id: publish_app_repo
+      name: Publish Central Subscription Repo
+      action: publish:gitlab
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of azure-management-group-template
+        repoUrl: gitlab.com?owner=platform9851920&repo=azure-app-subs-${{ parameters.appKey }}
+    
+    - id: fetch-app-sub-network-repo
+      name: Fetch App Subscription Network Repo For Default VNets
+      action: fetch:template
+      input:
+        url: ./azure-sub-network-${{ parameters.line_of_business_key }}-${{ parameters.appKey }}- #https://github.com/nara/gcp-cloud-run-iam-template
+        values:
+          managementGroupVar: ${{ parameters.mgGroups }}
+          org_email_domain: "domain.com" #todo
+          line_of_business_key: "lob" #todo
+          team_key : "${{ parameters.teamCode }}"
+          org_key: "orgkey" #todo
+          app_key: "${{ parameters.appKey }}"
+          billing_account_type: "${{ parameters.billingAccountType }}"
+          billing_account_id: "${{ parameters.billingAccountId }}"
+          billing_profile_id: "${{ parameters.billingProfileId }}"
+          invoice_section_id: "${{ parameters.invoiceSectionId }}"
+          customer_id: "${{ parameters.customerId }}"
+          enrollment_account_id: "${{ parameters.enrollmentAccountId }}"
+          name: "${{ parameters.name }}"
+
+    - id: publish_app_network_repo
+      name: Publish App Network Repo
+      action: publish:gitlab
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of azure-management-group-template
+        repoUrl: gitlab.com?owner=platform9851920&repo=azure-app-subs-${{ parameters.appKey }}
+
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

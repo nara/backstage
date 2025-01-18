@@ -1,0 +1,477 @@
+# implement one tier by selecting vnet/subnet and delegation
+# implement two tier by selecting vnet/subnet and delegation and frontend/api.
+# implement three tier by using genAI openAI service.
+
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: azure-serverless-layer
+  title: Azure Serverless Layer
+  description: Provision an application layer using serverless compute (e.g. App Service, Functions) using terraform and pipelines
+  tags:
+    - layer
+    - workloads
+    - azure
+spec:
+  owner: user:guest
+  type: service
+
+  # These parameters are used to generate the input form in the frontend, and are
+  # used to gather input data for the execution of the template.
+  parameters:
+    - title: Application Metadata
+      definitions:
+        secondaryRegion:
+          title: Secondary Region
+          type: string
+          description: Select secondary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+      required:
+        - domain
+        - system
+        - teamCode
+        - appKey
+      properties:
+        domain:
+          title: Domain
+          type: string
+          description: Select a domain
+          ui:autofocus: true
+          ui:field: EntityPicker
+          ui:options:
+            allowedKinds:
+              - Domain
+        system:
+          title: System
+          type: string
+          description: Select a System
+          ui:autofocus: true
+          ui:field: DependantEntityPicker
+          ui:options:
+            dependendsOnField: domain
+            allowedKind: System
+        teamCode:
+          title: Team Code
+          type: string
+          description: 3 letter code that represents your team
+          minLength: 3
+          maxLength: 3
+        appKey:
+          title: App Code
+          type: string
+          description: 3 letter code that represents the application
+          minLength: 3
+          maxLength: 3
+        appName:
+          title: App Name
+          type: string
+          description: Enter name of this application (e.g. no spaces allowed. my-application-name)
+          maxLength: 25
+          pattern: ^[a-zA-Z0-9]+([-_.][a-zA-Z0-9]+){0,24}$
+        primaryRegion:
+          title: Primary Region
+          type: string
+          description: Select primary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+        resiliency:
+          title: Resiliency
+          type: string
+          description: What level of resiliency this application needs for both Compute and Data?
+          enum:
+          - none
+          - pilotlight
+          - activepassive
+          - activeactive
+          enumNames:
+          - None
+          - Pilot-Light
+          - Active-Passive
+          - Active-Active
+        internetFacing:
+          title: Internet Facing
+          type: boolean
+          description: Is this application internet facing?
+        mgName:
+          title: Management Group
+          type: string
+          description: Select a management group for this tier
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: orgunits
+        subscription:
+          title: Subscription
+          type: string
+          description: Subscription where this tier will be created
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: accounts
+            dependendsOnField: mgName
+        appJson:
+          title: AppJSON
+          type: string
+          ui:field: AppLayerFormDataField
+          ui:options:
+            xpath: layers.layerCode
+          ui:backstage:
+            review:
+              show: false
+    - title: Layer Details
+      required:
+        - layerType
+        - language
+        - repoName
+      properties:
+        layerType:
+          title: Tier Type
+          type: string
+          description: Select a tier type for this application
+          enum:
+          - web
+          - app
+          - api
+        layerCode:
+          title: Layer Code
+          type: string
+          description: Enter a 3 letter unique code that represents the layer
+          minLength: 3
+          maxLength: 3
+        language:
+          title: Language
+          type: string
+          description: Select a language for this tier
+          enum:
+          - java
+          - nodejs
+          - python
+          - dotnet
+          - dotnetcore
+          - N/A
+        repoName:
+          title: Repository Name
+          type: string
+          description: Enter name of the repository (e.g. no spaces allowed. my-repository-name)
+          maxLength: 25
+          pattern: ^[a-zA-Z0-9]+([-_.][a-zA-Z0-9]+){0,24}$
+        service:
+          title: Service
+          type: string
+          description: Select a service
+          enum:
+          - app_service
+          - agw_and_functions
+          enumNames:
+          - App Service
+          - API Gateway + Functions
+      dependencies:
+        service:
+          oneOf:
+          - properties:
+              service:
+                const: agw_and_functions
+              gatewayFunc:
+                title: Gateway Function
+                type: string
+                description: Select a gateway function
+          - properties:
+              service:
+                const: app_service
+              appServiceName:
+                title: App Service Name
+                type: string
+                description: App Service Name
+              serviceSku:
+                title: App Service SKU
+                type: string
+                description: App Service SKU
+                enum:
+                - B1
+                - B2
+                - D1
+                default: B1
+              osType:
+                title: OS Type
+                type: string
+                description: OS Type
+                enum:
+                - linux
+                - windows
+                default: linux
+              securityLevel:
+                title: Security Level
+                type: string
+                description: Select a security level to define how the traffic navigates between tiers
+                enum:
+                - High
+                - Low
+                enumNames:
+                - High (Enables PrivateLink for AppService)
+                - Low (App Service is accessed on public internet)
+              enableVnetIntegration:
+                title: Allow App Service to access VNet Resources?
+                type: boolean
+                description: Allow this app service to access VNet Resources.
+            dependencies:
+              securityLevel:
+                oneOf:
+                - properties:
+                    securityLevel:
+                      const: High
+                    vnetPrivateLink:
+                      title: Private Link VNET
+                      type: string
+                      description: Select a Vnet to be used for private link
+                      ui:field: CspDataPicker
+                      ui:options:
+                        csp: azure
+                        dataType: vpcs
+                        dependendsOnField: subscription
+                    subnetPrivateLink:
+                      title: Private Link Subnet
+                      type: string
+                      description: Select a subnet for Private Link
+                      ui:field: CspDataPicker
+                      ui:options:
+                        csp: azure
+                        dataType: subnets
+                        dependendsOnField: vnetPrivateLink
+                - properties:
+                    securityLevel:
+                      const: Low
+              enableVnetIntegration:
+                oneOf:
+                - properties:
+                    enableVnetIntegration:
+                      const: true
+                    vnetInteg:
+                      title: Select a VNet to integrate
+                      type: string
+                      description: To let this app service call resources in the VNet, select a VNet
+                      ui:field: CspDataPicker
+                      ui:options:
+                        csp: azure
+                        dataType: vpcs
+                        dependendsOnField: subscription
+                    subnetInteg:
+                      title: Select a Subnet to integrate
+                      type: string
+                      description: To let this app service call resources in the VNet, select an integration subnet
+                      ui:field: CspDataPicker
+                      ui:options:
+                        csp: azure
+                        dataType: subnets
+                        dependendsOnField: vnetInteg
+                - properties:
+                    enableVnetIntegration:
+                      const: false
+
+    - title: Connectivity Details
+      required:
+        - layerType
+        - language
+        - repoName
+      properties:
+        connectionDetails:
+          title: Traffic Flow
+          type: array
+          items:
+            type: object
+            properties:
+              connectionName:
+                title: Connection Name
+                type: string
+                description: Enter a name for this connection
+                pattern: '^[-\w\._]+$'
+              priority:
+                title: Priority
+                type: number
+                description: Enter a priority for this connection
+              direction:
+                title: Direction
+                type: string
+                description: Select traffic direction
+                enum:
+                - Inbound
+                - Outbound
+              access:
+                title: Access
+                type: string
+                description: Select access type
+                enum:
+                - Allow
+                - Deny
+              sourceDestination:
+                title: Location
+                type: string
+                description: Select source or destination for traffic depending on direction
+                ui:field: AppLayerPicker
+                ui:options:
+                  appNameField: appKey
+                  currentLayerCodeField: layerCode
+              sourceDestinationAddressPrefix:
+                title: Target Address CIDR
+                type: string
+                description: Enter IP address CIDR of the target (format:nnn.nnn.nnn.nn/nn)
+              protocol:
+                title: protocol
+                type: string
+                description: Select protocol
+                enum:
+                - Http
+                - Https
+                - Tcp
+                - Udp
+              portRange:
+                title: Port or Port Range
+                type: string
+                description: Enter port number (443) or a port range (e.g, 1000-1002) (ephemeral ports in other direction are automatically added)
+
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  steps:
+    - id: first-tier-fetch-serverless-repo
+      name: First Tier - Fetch Serverless template
+      action: fetch:template
+      if: ${{ parameters.service == 'serverless' || (parameters.service == 'app_service' }}
+      input:
+        #url: https://github.com/nara/azure-app-layer-serverless-template.git
+        url: ./azure-app-layer-serverless-template
+        values:
+          app_key: ${{ parameters.appKey }}
+          environment: ${{ parameters.environment }}
+          org_email_domain: smartfigarage.com #TODO read from config
+          line_of_business_key: lob #${{ parameters.domain }} TODO
+          team_key: ${{ parameters.teamCode }}
+          org_key: org  #${{ parameters.environment }} TODO
+          hosting_type: ${{ parameters.hostingType }}
+          language: ${{ parameters.language }}
+          languageVersion: ${{ parameters.languageVersion }}
+          service: ${{ parameters.service }}
+          name: ${{ parameters.appServiceName }}
+          sku_name: ${{ parameters.skuName }}
+          primary_location: ${{ parameters.primaryRegion }}
+          frontdoor_sku_name: ${{ parameters.frontdoorSkuName }}
+          enable_vnet_integration: ${{ parameters.enableVnetIntegration }}
+          vnet_integration_id: ${{ parameters.vnetInteg }}
+          vnet_integration_subnet_id: ${{ parameters.subnetInteg }}
+          security_level: ${{ parameters.securityLevel }}
+          private_link_vnet_id: ${{ parameters.vnetPrivateLink }}
+          private_link_subnet_id: ${{ parameters.subnetPrivateLink }}
+
+   #generic, gitlab vs github
+   #check if repo exists, if not create it, if yes, check if branch with a name exists, if not create, if yes, update it. the branch gets deployed to dev.
+   #serverless repo
+    - id: publish_serverless
+      name: Publish Serverless Repo
+      action: publish:repo:branch
+      if: ${{ parameters.service == 'serverless' || (parameters.service == 'app_service' }}
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of azure-app-layer-serverless-template for application Key ${{ parameters.appKey }}
+        repoUrl: gitlab.com?owner=robust4&repo=azure-svl-${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }}
+        branchName: provision-refresh-from-devportal
+        commitAction: create
+
+    - id: clean_workspace_serverless
+      name: Clean Workspace
+      action: clean:workspace
+      input:
+        emptyDir: true
+
+    #network repo
+    - id: fetch-app-sub-network-repo
+      name: Fetch App Subscription Network Repo
+      action: fetch:template
+      input:
+        url: https://gitlab.com/robust4/azure-app-network-lob-${{ parameters.appKey }}.git
+        #url: ./azure-app-network-lob-${{ parameters.appKey }}
+
+    - id: update-json-tfvars-network
+      name: Update Network JSON TFVars file for connectivity
+      action: modify:tfvars:json
+      input:
+        tfvarsPath: env/dev-region-1.json
+        queryPath: rules_by_subnet.tier_name
+        queryValue: ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }}
+        updateNodes: 
+          subnet_name: ${{ parameters.subnetInteg }}
+          custom_rules: ${{ parameters.connectionDetails }}
+
+    - id: publish_app_network_repo
+      name: Publish App Subscription Network Repo
+      action: publish:repo:branch
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Updating network rules for ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }} from backstage
+        repoUrl: gitlab.com?owner=robust4&repo=azure-app-network-lob-${{ parameters.appKey }}
+        branchName: provision-refresh-from-devportal
+        title: Updating network rules for ${{ parameters.appKey }}
+        sourcePath: env
+        targetPath: env
+        commitAction: update
+
+    - id: clean_workspace_network
+      name: Clean Workspace
+      action: clean:workspace
+      input:
+        emptyDir: true
+
+    #security repo
+    - id: fetch-app-sub-security-repo
+      name: Fetch App Subscription Security Repo 1
+      action: fetch:template
+      input:
+        url: https://gitlab.com/robust4/azure-app-security-lob-${{ parameters.appKey }}.git
+        #url: ./azure-app-security-lob-${{ parameters.appKey }}
+
+    - id: update-json-tfvars-security
+      name: Update Security JSON TFVars file for connectivity
+      action: modify:tfvars:json
+      input:
+        tfvarsPath: infra/regional/env/dev-region-1.json
+        formDataJsonStr: ${{ parameters.appJson }}
+        updateNodes: 
+          app_layers: formDataPath=
+          custom_rules: ${{ parameters.connectionDetails }}
+
+    - id: publish_app_security_repo_branch
+      name: Publish App Subscription Security Repo Branch
+      action: publish:repo:branch
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Updating security tfvars for ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }} from backstage
+        repoUrl: gitlab.com?owner=robust4&repo=azure-app-security-lob-${{ parameters.appKey }}
+        branchName: provision-refresh-from-devportal
+        title: Updating security tfvars for ${{ parameters.appKey }}
+        sourcePath: infra/regional/env
+        targetPath: infra/regional/env
+        commitAction: update
+
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+        optional: true
+        # appKey: ${{ parameters.appKey }}
+        # appName: ${{ parameters.appName }}
+        # appDescription: ${{ parameters.appDescription }}
+        # gitlabInfraGroupName: robust4
+        # gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+        
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

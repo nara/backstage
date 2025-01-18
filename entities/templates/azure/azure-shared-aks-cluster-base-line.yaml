@@ -1,0 +1,579 @@
+# implement one tier by selecting vnet/subnet and delegation
+# implement two tier by selecting vnet/subnet and delegation and frontend/api.
+# implement three tier by using genAI openAI service.
+
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: azure-shared-aks-cluster-base-line
+  title: Azure Kuberntes Service Cluster (Baseline)
+  description: Provision an Azure Kubernetes Service Cluster using Baseline architecture as shown here https://learn.microsoft.com/en-us/azure/architecture/reference-architectures/containers/aks/baseline-aks
+  tags:
+    - shared
+    - kubernetes
+    - azure
+spec:
+  owner: user:guest
+  type: service
+
+  parameters:
+    - title: Cluster Placement
+      required:
+        # - domain
+        # - system
+        #- teamCode
+        - appKey
+      properties:
+        # domain:
+        #   title: Line of Business
+        #   type: string
+        #   description: Select a Line of Business
+        #   ui:autofocus: true
+        #   ui:field: EntityPicker
+        #   ui:options:
+        #     allowedKinds:
+        #       - Domain
+        # system:
+        #   title: System
+        #   type: string
+        #   description: Select a System
+        #   ui:autofocus: true
+        #   ui:field: DependantEntityPicker
+        #   ui:options:
+        #     dependendsOnField: domain
+        #     allowedKind: System
+        # teamCode:
+        #   title: Team Code
+        #   type: string
+        #   description: 3 letter code that represents your team
+        #   minLength: 3
+        #   maxLength: 3
+        appName:
+          title: Application Name
+          type: string
+          description: Enter the name of the application
+        appKey:
+          title: App Code
+          type: string
+          description: 3 letter code that represents the application
+          minLength: 3
+          maxLength: 3
+        mg_name:
+          title: Management Group
+          type: string
+          description: Select a management group where the resources will be created
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: orgunits
+        primaryRegion:
+          title: Primary Region
+          type: string
+          description: Select primary region for the workload
+          enum:
+          - southcentralus
+          - eastus
+        secondaryRegion:
+          title: Secondary Region for HA (Prod Only)
+          type: string
+          description: Select secondary region for the workload
+          enum:
+          - southcentralus
+          - eastus
+    
+    - title: Cluster Services
+      properties:
+        is_ops_cluster:
+          title: Ops Cluster
+          type: boolean
+          description: Is this an Ops Cluster? Ops cluster is a central cluster to host core services (e.g, Thanos, Grafana, Istio, ArgoCD etc).
+        install_prometheus:
+          title: Install Prometheus
+          type: boolean
+          description: Install Prometheus for monitoring
+        install_istio:
+          title: Install Istio
+          type: boolean
+          description: Install Istio for service mesh
+      dependencies:
+        is_ops_cluster:
+          oneOf:
+            - properties:
+                is_ops_cluster:
+                  const: true
+                install_argocd:
+                  title: Install ArgoCD
+                  type: boolean
+                  description: Install ArgoCD for GitOps
+                install_thanos:
+                  title: Install Thanos
+                  type: boolean
+                  description: Install Thanos for monitoring
+                install_grafana:
+                  title: Install Grafana
+                  type: boolean
+                  description: Install Grafana for monitoring
+            - properties:
+                is_ops_cluster:
+                  const: false
+        
+    - title: K8s Details
+      # required:
+      #   - prefix
+      #   - agent_size
+      #   - repoName
+      properties:
+        kube_version:
+          title: Kubernetes Version
+          type: string
+          description: Select a Kubernetes version
+          enum:
+          - 1.18.14
+          - 1.19.6
+          - 1.20.4
+          default: 1.20.4
+        agents_size:
+          title: Size of System Node
+          type: string
+          default: Standard_B2s
+          description: Enter size of System node (e.g. Standard_B2s)
+        os_disk_size_gb:
+          title: Agent Node OS Disk Size
+          type: number
+          description: Enter size of OS disk (e.g. 30)
+          default: 50
+        agents_count:
+          title: Number of System Nodes
+          type: number
+          default: 1
+          description: Enter number of System nodes (e.g. 2)
+        system_auto_scaling:
+          title: Enable Auto Scaling
+          type: boolean
+          description: Enable Auto Scaling
+        system_min_count:
+          title: Minimum System Node Count
+          type: number
+          default: 1
+          description: Enter minimum number of nodes (e.g. 1)
+        system_max_count:
+          title: Maximum Node Count
+          type: number
+          default: 2
+          description: Enter maximum number of nodes (e.g. 2)
+        enable_aad_auth:
+          title: Enable Azure Active Directory Authentication
+          type: boolean
+          description: Enable Azure Active Directory Authentication
+
+    - title: Hub VNet Details
+      # required:
+      #   - prefix
+      #   - agent_size
+      #   - repoName
+      properties:
+        hub_subscription:
+          title: Subscription
+          type: string
+          description: Subscription where Hub VNet is located
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: accounts
+            dependendsOnField: mg_name
+        hub_vnet_id:
+          title: VNet
+          type: string
+          description: Select Hub VNet
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: vpcs
+            dependendsOnField: hub_subscription
+        bastion_subnet_id:
+          title: Bastion Subnet
+          type: string
+          description: Select a subnet for cluster management
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: subnets
+            dependendsOnField: hub_vnet_id
+            dataOption: bastion
+        firewall_subnet_id:
+          title: Firewall Subnet
+          type: string
+          description: Select a subnet for outbound traffic
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: subnets
+            dependendsOnField: hub_vnet_id
+            dataOption: firewall
+        gatway_subnet_id:
+          title: Gateway Subnet
+          type: string
+          description: Select a subnet for onprem connectivity (VPN/ExpressRoute)
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: subnets
+            dependendsOnField: hub_vnet_id
+
+    - title: Spoke VNet Details
+      # required:
+      #   - prefix
+      #   - agent_size
+      #   - repoName
+      properties:
+        spoke_subscription:
+          title: Subscription
+          type: string
+          description: Subscription where Spoke VNet is located
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: accounts
+            dependendsOnField: mg_name
+        spoke_vnet_id:
+          title: VNet
+          type: string
+          description: Select Spoke VNet
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: vpcs
+            dependendsOnField: spoke_subscription
+        cluster_subnet_id:
+          title: Cluster Subnet
+          type: string
+          description: Select a subnet for cluster
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: subnets
+            dependendsOnField: spoke_vnet_id
+        private_link_subnet_id:
+          title: Private Link Subnet
+          type: string
+          description: Select a subnet for private link
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: subnets
+            dependendsOnField: spoke_vnet_id
+        app_gw_subnet_id:
+          title: Application Gateway Subnet
+          type: string
+          description: Select a subnet for application gateway
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: subnets
+            dependendsOnField: spoke_vnet_id
+        ingress_subnet_id:
+          title: Ingress Subnet
+          type: string
+          description: Select a subnet for ingress
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: subnets
+            dependendsOnField: spoke_vnet_id
+        node_pools:
+          title: Node Pools
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                title: Name of Node Pool
+                type: string
+                description: Enter name of node pool (e.g. default)
+                pattern: '^[-\w\._]+$'
+              name_prefix:
+                title: Name Prefix
+                type: string
+                description: Enter name prefix for node pool (e.g. default)
+                pattern: '^[-\w\._]+$'
+              vm_size:
+                title: VM Size
+                type: string
+                description: Enter size of VM (e.g. Standard_B2s)
+                default: Standard_B2s
+              node_count:
+                title: Node Count
+                type: number
+                description: Enter number of nodes (e.g. 2)
+              subnet_id:
+                title: Subnet
+                type: string
+                description: Select a subnet for node pool
+                ui:field: CspDataPicker
+                ui:options:
+                  csp: azure
+                  dataType: subnets
+                  dependendsOnField: spoke_vnet_id
+    - title: Namespace Details
+      # required:
+      #   - prefix
+      #   - agent_size
+      #   - repoName
+      properties:
+        namespaces:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                title: Name of Namespace
+                type: string
+                description: Enter name of namespace (e.g. default)
+                pattern: '^[-\w\._]+$'
+              namespace_key:
+                title: Namespace Key
+                type: string
+                minLength: 3
+                maxLength: 3
+                description: Enter namespace key (3 letters key word. eg. def)
+                pattern: '^[-\w\._]+$'
+              # services:
+              #   title: Services
+              #   type: array
+              #   items:
+              #     type: object
+              #     properties:
+              #       name:
+              #         title: Name of Service
+              #         type: string
+              #         description: Enter name of service (e.g. default)
+              #         pattern: '^[-\w\._]+$'
+              #       service_key:
+              #         title: Service Key
+              #         type: string
+              #         minLength: 3
+              #         maxLength: 3
+              #         description: Enter service key (3 letters key word. eg. def)
+              #         pattern: '^[-\w\._]+$'
+        
+    
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  steps:
+    - id: fetch-aks-template
+      name: Fetch AKS Template
+      action: fetch:template
+      input:
+        url: https://github.com/nara-alz-org/azure-shared-svc-aks-template.git
+        #url: ./azure-shared-svc-aks-template
+        values:
+          app_key: ${{ parameters.appKey }}
+          environment: ${{ parameters.environment }}
+          org_email_domain: smartfigarage.com #TODO read from config
+          line_of_business_key: lob #${{ parameters.domain }} TODO
+          team_key: abc #${{ parameters.teamCode }}
+          org_key: org  #${{ parameters.environment }} TODO
+          mg_name: ${{ parameters.mg_name }}
+          agents_size: ${{ parameters.agents_size }}
+          agents_count: ${{ parameters.agents_count }}
+          os_disk_size_gb: ${{ parameters.os_disk_size_gb }}
+          role_based_access_control_enabled: true
+          rbac_aad: ${{ parameters.enable_aad_auth }} 
+          rbac_aad_managed: ${{ parameters.enable_aad_auth }} 
+          hub_vnet_resource_group_name: ""
+          firewall_subnet_id: ${{ parameters.firewall_subnet_id }}
+          firewall_management_subnet_id: ${{ parameters.firewall_subnet_id }}
+          bastion_subnet_id: ${{ parameters.bastion_subnet_id }}
+          onprem_gateway_subnet_id: ${{ parameters.gatway_subnet_id }}
+          hub_vnet_name: ""
+          app_gateway_subnet_name: ""
+          spoke_vnet_resource_group_name: ""
+          spoke_vnet_name: ""
+          hub_vnet_id: ${{ parameters.hub_vnet_id }}
+          spoke_vnet_id: ${{ parameters.spoke_vnet_id }}
+          create_vnet_peering: true
+          create_app_gateway_for_ingress: true
+          app_gateway_subnet_id: ${{ parameters.app_gw_subnet_id }}
+          autoscale_configuration:
+            min_capacity: ${{ parameters.system_min_count }}
+            max_capacity: ${{ parameters.system_max_count }}
+            enabled: ${{ parameters.system_auto_scaling }}
+            default_capacity: ${{ parameters.system_min_count }}
+
+          vnet_subnet_id: ${{ parameters.cluster_subnet_id }}
+          private_link_subnet_id: ${{ parameters.private_link_subnet_id }}
+          app_gw_subnet_id: ${{ parameters.app_gw_subnet_id }}
+          hub_subscription: ${{ parameters.hub_subscription }}
+          spoke_subscription: ${{ parameters.spoke_subscription }}
+          ingress_subnet_id: ${{ parameters.ingress_subnet_id }}
+          node_pools: ${{ parameters.node_pools }}
+          namespaces: ${{ parameters.namespaces }}
+          kube_version: ${{ parameters.kube_version }}
+          region: ${{ parameters.primaryRegion }}
+          location: ${{ parameters.primaryRegion }}
+          location_short: ${{ parameters.primaryRegion }}
+          temporary_name_for_rotation: ${{ parameters.appKey }}${{ parameters.environment }}aks
+          azurerm_container_registry: ""
+          identity_type: UserAssigned
+          network_plugin: azure
+          load_balancer_sku: standard #todo
+          private_cluster_enabled: false #todo
+          is_ops_cluster: ${{ parameters.is_ops_cluster }}
+          install_prometheus: ${{ parameters.install_prometheus }}
+          install_istio: ${{ parameters.install_istio }}
+          install_argocd: ${{ parameters.install_argocd }}
+          install_thanos: ${{ parameters.install_thanos }}
+          install_grafana: ${{ parameters.install_grafana }}
+
+    # - id: display_file
+    #   name: Display File
+    #   action: debug:displayFile
+    #   input:
+    #     filePath: ./service/env/dev-region-1.json
+
+    - id: debug
+      name: Debug
+      action: debug:log
+      input:
+        listWorkspace: true
+
+    - id: publish_first_tier_serverless
+      name: Publish Serverless Repo
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        description: Instance of azure-app-layer-serverless-template for application Key ${{ parameters.appKey }}
+        repoUrl: github.com?owner=nara-alz-org&repo=azure-aks-cluster-${{ parameters.appKey }}
+
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_first_tier_serverless'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+        optional: true
+        appKey: ${{ parameters.appKey }}
+        appName: ${{ parameters.appName }}
+        appDescription: ${{ parameters.appDescription }}
+        gitlabInfraGroupName: robust4
+        gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+
+    - id: savedata
+      name: Save Data
+      action: save:entity:json
+      input:
+        allParameters: ${{ parameters }}
+        entityId: component:default/${{ parameters.appKey }}
+        templateName: azure-shared-aks-cluster-base-line
+  #  #generic, gitlab vs github
+  #  #check if repo exists, if not create it, if yes, check if branch with a name exists, if not create, if yes, update it. the branch gets deployed to dev.
+  #  #serverless repo
+  #   - id: publish_serverless
+  #     name: Publish Serverless Repo
+  #     action: publish:repo:branch
+  #     if: ${{ parameters.service == 'serverless' || (parameters.service == 'app_service' }}
+  #     input:
+  #       allowedHosts: ['gitlab.com']
+  #       description: Instance of azure-app-layer-serverless-template for application Key ${{ parameters.appKey }}
+  #       repoUrl: gitlab.com?owner=robust4&repo=azure-svl-${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }}
+  #       branchName: provision-refresh-from-devportal
+  #       commitAction: create
+
+  #   - id: clean_workspace_serverless
+  #     name: Clean Workspace
+  #     action: clean:workspace
+  #     input:
+  #       emptyDir: true
+
+  #   #network repo
+  #   - id: fetch-app-sub-network-repo
+  #     name: Fetch App Subscription Network Repo
+  #     action: fetch:template
+  #     input:
+  #       url: https://gitlab.com/robust4/azure-app-network-lob-${{ parameters.appKey }}.git
+  #       #url: ./azure-app-network-lob-${{ parameters.appKey }}
+
+  #   - id: update-json-tfvars-network
+  #     name: Update Network JSON TFVars file for connectivity
+  #     action: modify:tfvars:json
+  #     input:
+  #       tfvarsPath: env/dev-region-1.json
+  #       queryPath: rules_by_subnet.tier_name
+  #       queryValue: ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }}
+  #       updateNodes: 
+  #         subnet_name: ${{ parameters.subnetInteg }}
+  #         custom_rules: ${{ parameters.connectionDetails }}
+
+  #   - id: publish_app_network_repo
+  #     name: Publish App Subscription Network Repo
+  #     action: publish:repo:branch
+  #     input:
+  #       allowedHosts: ['gitlab.com']
+  #       description: Updating network rules for ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }} from backstage
+  #       repoUrl: gitlab.com?owner=robust4&repo=azure-app-network-lob-${{ parameters.appKey }}
+  #       branchName: provision-refresh-from-devportal
+  #       title: Updating network rules for ${{ parameters.appKey }}
+  #       sourcePath: env
+  #       targetPath: env
+  #       commitAction: update
+
+  #   - id: clean_workspace_network
+  #     name: Clean Workspace
+  #     action: clean:workspace
+  #     input:
+  #       emptyDir: true
+
+  #   #security repo
+  #   - id: fetch-app-sub-security-repo
+  #     name: Fetch App Subscription Security Repo 1
+  #     action: fetch:template
+  #     input:
+  #       url: https://gitlab.com/robust4/azure-app-security-lob-${{ parameters.appKey }}.git
+  #       #url: ./azure-app-security-lob-${{ parameters.appKey }}
+
+  #   - id: update-json-tfvars-security
+  #     name: Update Security JSON TFVars file for connectivity
+  #     action: modify:tfvars:json
+  #     input:
+  #       tfvarsPath: infra/regional/env/dev-region-1.json
+  #       formDataJsonStr: ${{ parameters.appJson }}
+  #       updateNodes: 
+  #         app_layers: formDataPath=
+  #         custom_rules: ${{ parameters.connectionDetails }}
+
+  #   - id: publish_app_security_repo_branch
+  #     name: Publish App Subscription Security Repo Branch
+  #     action: publish:repo:branch
+  #     input:
+  #       allowedHosts: ['gitlab.com']
+  #       description: Updating security tfvars for ${{ parameters.appKey }}-${{ parameters.layerType }}-${{ parameters.layerCode }} from backstage
+  #       repoUrl: gitlab.com?owner=robust4&repo=azure-app-security-lob-${{ parameters.appKey }}
+  #       branchName: provision-refresh-from-devportal
+  #       title: Updating security tfvars for ${{ parameters.appKey }}
+  #       sourcePath: infra/regional/env
+  #       targetPath: infra/regional/env
+  #       commitAction: update
+
+  #   - id: register
+  #     name: Register Application
+  #     action: catalog:register
+  #     input:
+  #       repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+  #       catalogInfoPath: '/catalog-info.yaml'
+  #       optional: true
+  #       # appKey: ${{ parameters.appKey }}
+  #       # appName: ${{ parameters.appName }}
+  #       # appDescription: ${{ parameters.appDescription }}
+  #       # gitlabInfraGroupName: robust4
+  #       # gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+        
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

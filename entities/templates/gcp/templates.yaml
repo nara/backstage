@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: gcp-templates
+spec:
+  type: file
+  targets:
+    - ./cloud-run-sql.yaml
+    - ./compute-engine-cloud-sql.yaml

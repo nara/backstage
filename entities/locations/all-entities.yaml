@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: all-entities
+spec:
+  type: file
+  targets:
+    - ../domains/template.yaml
+    - ../systems/template.yaml
+    - ../user-groups/template.yaml
+    - ../templates/templates.yaml
+

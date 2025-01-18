@@ -1,0 +1,1 @@
+export { commonBackendPlugin as default } from './plugin';

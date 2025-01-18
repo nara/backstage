@@ -1,0 +1,486 @@
+# implement one tier by selecting vnet/subnet and delegation
+# implement two tier by selecting vnet/subnet and delegation and frontend/api.
+# implement three tier by using genAI openAI service.
+
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: multi-tier-app
+  title: Multi-Tier Application (1/2/3 tiers)
+  description: Provision New Multi-Tier Application using terraform and pipelines
+  tags:
+    - recommended
+    - workloads
+    - azure
+spec:
+  owner: user:guest
+  type: service
+
+  # These parameters are used to generate the input form in the frontend, and are
+  # used to gather input data for the execution of the template.
+  parameters:
+    - title: Application Metadata
+      definitions:
+        secondaryRegion:
+          title: Secondary Region
+          type: string
+          description: Select secondary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+      required:
+        - domain
+        - system
+        - teamCode
+        - appKey
+      properties:
+        domain:
+          title: Domain
+          type: string
+          description: Select a domain
+          ui:autofocus: true
+          ui:field: EntityPicker
+          ui:options:
+            allowedKinds:
+              - Domain
+        system:
+          title: System
+          type: string
+          description: Select a System
+          ui:autofocus: true
+          ui:field: DependantEntityPicker
+          ui:options:
+            dependendsOnField: domain
+            allowedKind: System
+        teamCode:
+          title: Team Code
+          type: string
+          description: 3 letter code that represents your team
+          minLength: 3
+          maxLength: 3
+        appKey:
+          title: App Code
+          type: string
+          description: 3 letter code that represents the application
+          minLength: 3
+          maxLength: 3
+        appName:
+          title: App Name
+          type: string
+          description: Enter name of this application (e.g. no spaces allowed. my-application-name)
+          maxLength: 25
+          pattern: ^[a-zA-Z0-9]+([-_.][a-zA-Z0-9]+){0,24}$
+        primaryRegion:
+          title: Primary Region
+          type: string
+          description: Select primary region for the workload
+          enum:
+          - us-central1
+          - us-east1
+        resiliency:
+          title: Resiliency
+          type: string
+          description: What level of resiliency this application needs for both Compute and Data?
+          enum:
+          - none
+          - pilotlight
+          - activepassive
+          - activeactive
+          enumNames:
+          - None
+          - Pilot-Light
+          - Active-Passive
+          - Active-Active
+        internetFacing:
+          title: Internet Facing
+          type: boolean
+          description: Is this application internet facing?
+        mgName:
+          title: Management Group
+          type: string
+          description: Select a management group for this tier
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: orgunits
+        subscription:
+          title: Subscription
+          type: string
+          description: Subscription where this tier will be created
+          ui:field: CspDataPicker
+          ui:options:
+            csp: azure
+            dataType: accounts
+            dependendsOnField: mgName
+          
+    - title: First Tier
+      required:
+        - tierType
+        - language
+      properties:
+        enableFirstTier:
+          title: Use this tier
+          type: boolean
+          description: Enable First Tier
+      dependencies:
+        enableFirstTier:
+          oneOf:
+          - properties:
+              enableFirstTier:
+                const: false
+          - properties:
+              enableFirstTier:
+                const: true
+              tierType:
+                title: Tier Type
+                type: string
+                description: Select a tier type for this application
+                enum:
+                - web
+                - app
+                - api
+                - db
+              language:
+                title: Language
+                type: string
+                description: Select a language for this tier
+                enum:
+                - java
+                - nodejs
+                - python
+                - dotnet
+                - dotnetcore
+                - N/A
+              hostingType:
+                title: Hosting Type
+                type: string
+                description: Select how this tier will be hosted
+                enum:
+                - static
+                - serverless
+                - container
+                - vm
+                - db
+                enumNames:
+                - Static
+                - Serverless (Functions, Web Apps, App Service Fabric)
+                - Container (Kubernetes, App Service for Containers, Container Instances)
+                - VM
+                - DB
+            dependencies:
+              hostingType:
+                oneOf:
+                - properties:
+                    hostingType:
+                      const: static
+                - properties:
+                    hostingType:
+                      const: container
+                    service:
+                      title: Service
+                      type: string
+                      description: Select a service
+                      enum:
+                      - app_service
+                      - container_apps
+                      - container_instance
+                      - aks
+                      enumNames:
+                      - App Service
+                      - Container Apps
+                      - Container Instance
+                      - AKS
+                - properties:
+                    hostingType:
+                      const: serverless
+                    service:
+                      title: Service
+                      type: string
+                      description: Select a service
+                      enum:
+                      - agw_and_functions
+                      - app_service
+                      enumNames:
+                      - API Gateway + Functions
+                      - App Service
+                  dependencies:
+                    service:
+                      oneOf:
+                      - properties:
+                          service:
+                            const: agw_and_functions
+                          gatewayFunc:
+                            title: Gateway Function
+                            type: string
+                            description: Select a gateway function
+                      - properties:
+                          service:
+                            const: app_service
+                          appServiceName:
+                            title: App Service Name
+                            type: string
+                            description: App Service Name
+                          serviceSku:
+                            title: App Service SKU
+                            type: string
+                            description: App Service SKU
+                            enum:
+                            - B1
+                            - B2
+                            - D1
+                            default: B1
+                          osType:
+                            title: OS Type
+                            type: string
+                            description: OS Type
+                            enum:
+                            - linux
+                            - windows
+                            default: linux
+                          securityLevel:
+                            title: Security Level
+                            type: string
+                            description: Select a security level to define how the traffic navigates between tiers
+                            enum:
+                            - High
+                            - Low
+                            enumNames:
+                            - High (Enables PrivateLink for AppService)
+                            - Low (App Service is accessed on public internet)
+                          enableVnetIntegration:
+                            title: Allow App Service to access VNet Resources?
+                            type: boolean
+                            description: Allow this app service to access VNet Resources.
+                        dependencies:
+                          securityLevel:
+                            oneOf:
+                            - properties:
+                                securityLevel:
+                                  const: High
+                                vnetPrivateLink:
+                                  title: Private Link VNET
+                                  type: string
+                                  description: Select a Vnet to be used for private link
+                                  ui:field: CspDataPicker
+                                  ui:options:
+                                    csp: azure
+                                    dataType: vpcs
+                                    dependendsOnField: subscription
+                                subnetPrivateLink:
+                                  title: Private Link Subnet
+                                  type: string
+                                  description: Select a subnet for Private Link
+                                  ui:field: CspDataPicker
+                                  ui:options:
+                                    csp: azure
+                                    dataType: subnets
+                                    dependendsOnField: vnetPrivateLink
+                            - properties:
+                                securityLevel:
+                                  const: Low
+                          enableVnetIntegration:
+                            oneOf:
+                            - properties:
+                                enableVnetIntegration:
+                                  const: true
+                                vnetInteg:
+                                  title: Select a VNet to integrate
+                                  type: string
+                                  description: To let this app service call resources in the VNet, select a VNet
+                                  ui:field: CspDataPicker
+                                  ui:options:
+                                    csp: azure
+                                    dataType: vpcs
+                                    dependendsOnField: subscription
+                                subnetInteg:
+                                  title: Select a Subnet to integrate
+                                  type: string
+                                  description: To let this app service call resources in the VNet, select an integration subnet
+                                  ui:field: CspDataPicker
+                                  ui:options:
+                                    csp: azure
+                                    dataType: subnets
+                                    dependendsOnField: vnetInteg
+                            - properties:
+                                enableVnetIntegration:
+                                  const: false
+
+                            #network connectivity private connection. select subnet.
+                # - properties:
+                #     hostingType:
+                #       const: container
+                #     service:
+                #       title: Service
+                #       type: string
+                #       description: Select a service
+                #       enum:
+                #       - azure functions
+                #       - container apps
+                #       - web app for containers
+                #       - container instances
+                #       - app service fabric
+              language:
+                oneOf:
+                - properties:
+                    language:
+                      const: dotnet
+                    languageVersion:
+                      title: .NET Version
+                      type: string
+                      description: Select a .NET version
+                      enum:
+                      - "7"
+                      - "6"
+                      enumNames:
+                      - "7"
+                      - "6"
+                      default: "7"
+                - properties:
+                    language:
+                      const: dotnetcore
+                    languageVersion:
+                      title: .NET Core Version
+                      type: string
+                      description: Select a .NET Core version
+                      enum:
+                      - "7"
+                      - "6"
+                      enumNames:
+                      - "7"
+                      - "6"
+                      default: "7"
+                - properties:
+                    language:
+                      const: java
+                    languageVersion:
+                      title: Java Version
+                      type: string
+                      description: Select a Java version
+                      enum:
+                      - "17"
+                      - "11"
+                      - "8"
+                      enumNames:
+                      - "17"
+                      - "11"
+                      - "8"
+                      default: "17"
+                - properties:
+                    language:
+                      const: nodejs
+                    languageVersion:
+                      title: NodeJS Version
+                      type: string
+                      description: Select a NodeJS version
+                      enum:
+                      - "18"
+                      - "16"
+                      - "14"
+                      - "12"
+                      default: 16"
+                - properties:
+                    language:
+                      const: python
+                    languageVersion:
+                      title: Python Version
+                      type: string
+                      description: Select a Python version
+                      enum:
+                      - "3.8"
+                      - "3.7"
+                      - "3.6"
+                      default: "3.8"
+              internetFacing:
+                oneOf:
+                - properties:
+                    internetFacing:
+                      const: false
+                - properties:
+                    internetFacing:
+                      const: true
+                    frontDoorSkuName:
+                      title: Front Door SKU Name
+                      type: string
+                      description: Front Door SKU Name
+                      enum:
+                      - Standard_AzureFrontDoor
+                      - Premium_AzureFrontDoor
+                      default: Standard_AzureFrontDoor
+                    dnsPrefix:
+                      title: DNS Prefix
+                      type: string
+                      description: DNS Prefix
+                      minLength: 3
+                      maxLength: 10
+                      #pattern: ^[a-zA-Z0-9]+([-_.][a-zA-Z0-9]+){0,24}$ #TODO
+
+
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  steps:
+    - id: first-tier-fetch-serverless-repo
+      name: First Tier - Fetch Serverless template
+      action: fetch:template
+      if: ${{ parameters.service == 'serverless' || (parameters.service == 'app_service' }}
+      input:
+        #url: https://github.com/nara/azure-app-layer-serverless-template.git
+        url: ./azure-app-layer-serverless-template
+        values:
+          app_key: ${{ parameters.appKey }}
+          environment: ${{ parameters.environment }}
+          org_email_domain: smartfigarage.com #TODO read from config
+          line_of_business_key: lob #${{ parameters.domain }} TODO
+          team_key: ${{ parameters.teamCode }}
+          org_key: org  #${{ parameters.environment }} TODO
+          hosting_type: ${{ parameters.hostingType }}
+          language: ${{ parameters.language }}
+          languageVersion: ${{ parameters.languageVersion }}
+          service: ${{ parameters.service }}
+          name: ${{ parameters.appServiceName }}
+          sku_name: ${{ parameters.skuName }}
+          primary_location: ${{ parameters.primaryRegion }}
+          frontdoor_sku_name: ${{ parameters.frontdoorSkuName }}
+          enable_vnet_integration: ${{ parameters.enableVnetIntegration }}
+          vnet_integration_id: ${{ parameters.vnetInteg }}
+          vnet_integration_subnet_id: ${{ parameters.subnetInteg }}
+          security_level: ${{ parameters.securityLevel }}
+          private_link_vnet_id: ${{ parameters.vnetPrivateLink }}
+          private_link_subnet_id: ${{ parameters.subnetPrivateLink }}
+
+    - id: publish_first_tier_serverless
+      name: Publish First Tier Serverless Repo
+      action: publish:gitlab
+      if: ${{ parameters.service == 'serverless' || (parameters.service == 'app_service' }}
+      input:
+        allowedHosts: ['gitlab.com']
+        description: Instance of azure-app-layer-serverless-template for application Key ${{ parameters.appKey }}
+        repoUrl: gitlab.com?owner=robust4&repo=azure-svl-${{ parameters.appKey }}-${{ parameters.tierType }}
+
+    # This step publishes the contents of the working directory to GitHub.
+    - id: clean_workspace
+      name: Clean Workspace
+      action: clean:workspace
+      input:
+        emptyDir: true
+
+    - id: register
+      name: Register Application
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish_workload'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+        appKey: ${{ parameters.appKey }}
+        appName: ${{ parameters.appName }}
+        appDescription: ${{ parameters.appDescription }}
+        gitlabInfraGroupName: robust4 #todo make it input
+        gitlabInfraProjectName: ${{ parameters.appKey }}-gcp-workload-cr-cs
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish_workload'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

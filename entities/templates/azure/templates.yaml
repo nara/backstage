@@ -1,0 +1,19 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: azure-templates
+spec:
+  type: file
+  targets:
+    - ./management-groups.yaml
+    - ./central-network-manager.yaml
+    - ./central-subscriptions.yaml
+    - ./app-subscriptions.yaml
+    - ./vnet-subnets.yaml
+    - ./multi-tier-app.yaml
+    - ./app-build-workflow.yaml
+    - ./azure-container-layer.yaml
+    - ./azure-serverless-layer.yaml
+    - ./azure-shared-aks-cluster.yaml
+    - ./azure-shared-aks-cluster-base-line.yaml
+    - ./azure-k8-microservice.yaml

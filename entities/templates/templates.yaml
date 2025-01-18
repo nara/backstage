@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: cloud-templates
+spec:
+  type: file
+  targets:
+    - ./gcp/templates.yaml
+    # - ./aws/templates.yaml
+    - ./azure/templates.yaml
