@@ -9,7 +9,7 @@ yarn install
 yarn dev
 ```
 
-###Customizations
+### Customizations
 
 Custom Templates to deploy applications across 3 CSPs 
 Custom UI and plugins to deploy applications with terraform 
